@@ -10,7 +10,15 @@ import time
 import logging
 import signal
 import sys
+from time import sleep
+from random import uniform
 
+
+# 在全域變數區塊加入
+MAX_RETRIES = 3
+RETRY_DELAY = 60  # 基本重試延遲時間（秒）
+last_connection_attempt = 0
+connection_attempts = 0
 # Load environment variables
 load_dotenv()
 
@@ -131,15 +139,24 @@ def on_message(ws, message):
             process_batch_and_send()
 
 
+# 修改 on_error 處理函數
 def on_error(ws, error):
-    logger.error(f"WebSocket 錯誤: {error}")
+    global connection_attempts
+    if "429" in str(error):
+        logger.error(f"達到 API 請求限制，等待重試...")
+        connection_attempts += 1
+    else:
+        logger.error(f"WebSocket 錯誤: {error}")
 
 
 def on_close(ws, close_status_code, close_msg):
     logger.info(f"WebSocket 關閉: {close_status_code} - {close_msg}")
 
 
+# 修改 on_open 處理函數
 def on_open(ws):
+    global connection_attempts
+    connection_attempts = 0  # 重置重試計數
     logger.info("WebSocket 連線成功，訂閱 QQQ...")
     ws.send('{"type":"subscribe","symbol":"QQQ"}')
 
@@ -158,10 +175,36 @@ def signal_handler(sig, frame):
 
 # WebSocket 運行函數
 def run_websocket():
-    global ws_instance
+    global ws_instance, last_connection_attempt, connection_attempts
+
     while running:
         try:
+            current_time = time.time()
+            time_since_last_attempt = current_time - last_connection_attempt
+
+            # 檢查重試頻率
+            if time_since_last_attempt < RETRY_DELAY:
+                sleep_time = RETRY_DELAY - time_since_last_attempt
+                logger.info(f"等待 {sleep_time:.0f} 秒後重試...")
+                time.sleep(sleep_time)
+
+            # 指數退避重試
+            if connection_attempts > 0:
+                backoff = min(
+                    300, RETRY_DELAY * (2 ** (connection_attempts - 1))
+                )  # 最多等待 5 分鐘
+                jitter = uniform(0, 0.1 * backoff)  # 加入隨機延遲
+                logger.info(
+                    f"第 {connection_attempts} 次重試，等待 {backoff + jitter:.1f} 秒..."
+                )
+                time.sleep(backoff + jitter)
+
+            last_connection_attempt = time.time()
+            connection_attempts += 1
+
             ws_url = f"wss://ws.finnhub.io?token={FINNHUB_API_KEY}"
+            logger.info(f"嘗試建立 WebSocket 連線 (嘗試次數: {connection_attempts})")
+
             ws_instance = websocket.WebSocketApp(
                 ws_url,
                 on_message=on_message,
@@ -170,9 +213,22 @@ def run_websocket():
                 on_open=on_open,
             )
             ws_instance.run_forever()
+
+            # 如果連線成功，重置嘗試次數
+            connection_attempts = 0
+
         except Exception as e:
-            if running:  # 只有在程式未主動退出時才重連
-                logger.error(f"WebSocket 異常: {e}，5 秒後重連...")
+            if not running:
+                break
+
+            logger.error(f"WebSocket 異常: {e}")
+
+            if connection_attempts >= MAX_RETRIES:
+                logger.error(f"重試次數超過上限 ({MAX_RETRIES})，等待較長時間後重試...")
+                time.sleep(300)  # 等待 5 分鐘
+                connection_attempts = 0  # 重置重試次數
+            else:
+                logger.info(f"5 秒後重試... (嘗試次數: {connection_attempts})")
                 time.sleep(5)
 
 
