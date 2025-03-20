@@ -20,14 +20,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Get environment variables
+# 在環境變數驗證部分加入更詳細的日誌
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
 
-# Verify environment variables
+# 詳細記錄環境變數狀態
+logger.info("檢查環境變數設定...")
+logger.info(f"FINNHUB_API_KEY 是否存在: {bool(FINNHUB_API_KEY)}")
+logger.info(f"SLACK_BOT_TOKEN 是否存在: {bool(SLACK_BOT_TOKEN)}")
+logger.info(f"SLACK_CHANNEL 是否存在: {bool(SLACK_CHANNEL)}")
+
 if not all([FINNHUB_API_KEY, SLACK_BOT_TOKEN, SLACK_CHANNEL]):
-    logger.error("Missing required environment variables")
+    logger.error("環境變數缺失:")
+    if not FINNHUB_API_KEY:
+        logger.error("- FINNHUB_API_KEY 未設定")
+    if not SLACK_BOT_TOKEN:
+        logger.error("- SLACK_BOT_TOKEN 未設定")
+    if not SLACK_CHANNEL:
+        logger.error("- SLACK_CHANNEL 未設定")
     sys.exit(1)
 
 # 初始化 Slack 客戶端
