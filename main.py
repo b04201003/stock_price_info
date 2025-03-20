@@ -29,7 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 在環境變數驗證部分加入更詳細的日誌
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+FINNHUB_API_KEY = "cvc46e9r01qhnuvqh8s0cvc46e9r01qhnuvqh8sg"
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
 
